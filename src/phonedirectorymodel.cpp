@@ -36,6 +36,7 @@
 #include "collectioninterface.h"
 #include "dbus/presencemanager.h"
 #include "globalinstances.h"
+#include "private/contactmethod_p.h"
 #include "interfaces/pixmapmanipulatori.h"
 #include "personmodel.h"
 #include "dbus/configurationmanager.h"
@@ -815,13 +816,32 @@ PhoneDirectoryModelPrivate::slotRegisteredNameFound(const Account* account, Name
         foreach (ContactMethod* cm, wrap->numbers) {
             if (cm->account() == account) {
                 cm->incrementAlternativeName(name, QDateTime::currentDateTime().toTime_t());
-                cm->setRegisteredName(name);
+                cm->d_ptr->setRegisteredName(name);
+
+                // Add the CM to the directory using the registered name too.
+                // Note that in theory the wrapper can exist already if the
+                // user was either offline in a call attempt or if there is a
+                // collision with a SIP account.
+                if (!m_hDirectory.contains(name)) {
+                    //TODO support multiple name service, use proper URIs for names
+                    auto wrap2 = new NumberWrapper();
+                    m_hDirectory    [name] = wrap2;
+                    m_hSortedNumbers[name] = wrap2;
+                }
+
+                // Only add it once
+                if (!m_hDirectory[name]->numbers.indexOf(cm)) {
+                    //TODO check if some deduplication can be performed
+                    m_hDirectory[name]->numbers << cm;
+                }
             } else {
                 qDebug() << "registered name: uri matches but not account" << name << address << account << cm->account();
             }
         }
     } else {
         // got a registered name for a CM which hasn't been created yet
+        // This can be left as-is to save memory. Those CMs are never freed.
+        // It is generally preferred to create as little as possible.
     }
 }
 
